@@ -69,19 +69,58 @@ def search_nodes(
     return nodes
 
 
-def download_file(url: str, path: str, session: Session):
+def download_file(url: str, path: str, options: Dict[str, Any]) -> str:
     """
     Download one specific file.
+
+    Returns local path of downloaded file.
     """
-    response = session.get(url, stream=True)
-    if response.status_code == 200:
-        with open(path, "wb") as outfile:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    outfile.write(chunk)
-    else:
-        print(f"Failed to download file. Status code: {response.status_code}")
-        print(response.text)
+    log = _get_logger(options)
+    temp_dir_usr = _get_temp_dir(options)
+    basename = os.path.basename(path)
+
+    with _get_monitor(options).status() as status:
+        status.set_filename(basename)
+        attempts = 0
+        while attempts < 10:
+            attempts += 1
+            try:
+                session = _get_credentials(options).get_session()
+            except TokenClientConnectionError:
+                log.warning("Token client connection failed, retrying..")
+                continue
+            except TokenExpiredSignatureError:
+                log.warning("Token signature expired, retrying..")
+                continue
+            url = _follow_redirect(url, session)
+            with (
+                session.get(url, stream=True) as response,
+                tempfile.TemporaryDirectory(
+                    prefix=basename, dir=temp_dir_usr
+                ) as temp_dir,
+            ):
+                if response.status_code != 200:
+                    log.warning(f"Status code {response.status_code}, retrying..")
+                    time.sleep(60 * (1 + (random.random() / 4)))
+                    continue
+
+                status.set_filesize(int(response.headers["Content-Length"]))
+                tmp_file = os.path.join(temp_dir, "download.zip")
+                with open(tmp_file, "wb") as outfile:
+                    try:
+                        for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):
+                            outfile.write(chunk)
+                            status.add_progress(len(chunk))
+                    except (
+                        ChunkedEncodingError,
+                        ConnectionResetError,
+                        ProtocolError,
+                    ) as e:
+                        log.warning(e)
+                        continue
+                # Close file before copy so all buffers are flushed.
+                shutil.copy(tmp_file, path)
+                return path
 
 
 def download_node(
@@ -94,7 +133,6 @@ def download_node(
     Download specific files within a feature using node filtering.
     """
     options = options or {}
-    session = _get_credentials(options).get_session()
 
     # Get product URL and name and create output dir
     odata_url = "https://download.dataspace.copernicus.eu/odata/v1"
@@ -107,7 +145,7 @@ def download_node(
     download_file(
         _href_to_url(odata_url, feature["id"], product_name, "manifest.safe"),
         manifest_file_path,
-        session,
+        options,
     )
 
     # List nodes that match pattern based on manifest file contents
@@ -123,7 +161,7 @@ def download_node(
         download_file(
             _href_to_url(odata_url, feature["id"], product_name, node["href"][2:]),
             output_file_path,
-            session,
+            options,
         )
 
 
