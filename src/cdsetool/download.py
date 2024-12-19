@@ -76,7 +76,6 @@ def download_file(url: str, path: str, options: Dict[str, Any]) -> Union[str, No
     Returns local path of downloaded file.
     """
     log = _get_logger(options)
-    temp_dir_usr = _get_temp_dir(options)
     basename = os.path.basename(path)
 
     with _get_monitor(options).status() as status:
@@ -93,20 +92,14 @@ def download_file(url: str, path: str, options: Dict[str, Any]) -> Union[str, No
                 log.warning("Token signature expired, retrying..")
                 continue
             url = _follow_redirect(url, session)
-            with (
-                session.get(url, stream=True) as response,
-                tempfile.TemporaryDirectory(
-                    prefix=basename, dir=temp_dir_usr
-                ) as temp_dir,
-            ):
+            with session.get(url, stream=True) as response:
                 if response.status_code != 200:
                     log.warning(f"Status code {response.status_code}, retrying..")
                     time.sleep(60 * (1 + (random.random() / 4)))
                     continue
 
                 status.set_filesize(int(response.headers["Content-Length"]))
-                tmp_file = os.path.join(temp_dir, "download.zip")
-                with open(tmp_file, "wb") as outfile:
+                with open(path, "wb") as outfile:
                     try:
                         for chunk in response.iter_content(chunk_size=1024 * 1024 * 5):
                             outfile.write(chunk)
@@ -118,11 +111,9 @@ def download_file(url: str, path: str, options: Dict[str, Any]) -> Union[str, No
                     ) as e:
                         log.warning(e)
                         continue
-                # Close file before copy so all buffers are flushed.
-                shutil.copy(tmp_file, path)
                 return path
 
-    log.error(f"Failed to download {path}")
+    log.error(f"Failed to download {basename}")
     return None
 
 
@@ -131,41 +122,58 @@ def download_node(
     path: str,
     nodefilter_pattern: str,
     options: Union[Dict[str, Any], None] = None,
-):
+) -> str:
     """
     Download specific files within a feature using node filtering.
     """
     options = options or {}
+    log = _get_logger(options)
+    temp_dir_usr = _get_temp_dir(options)
 
-    # Get product URL and name and create output dir
+    # Get product URL and name
     odata_url = "https://download.dataspace.copernicus.eu/odata/v1"
     product_name = feature["properties"]["title"]
-    output_product_path = os.path.join(path, product_name)
-    os.makedirs(output_product_path, exist_ok=True)
 
-    # Download manifest file using hardcoded paths to find URL
-    manifest_file_path = os.path.join(output_product_path, "manifest.safe")
-    download_file(
-        _href_to_url(odata_url, feature["id"], product_name, "manifest.safe"),
-        manifest_file_path,
-        options,
-    )
+    with tempfile.TemporaryDirectory(prefix=product_name, dir=temp_dir_usr) as temp_dir:
+        temp_product_path = os.path.join(temp_dir, product_name)
+        os.makedirs(temp_product_path, exist_ok=True)
 
-    # List nodes that match pattern based on manifest file contents
-    nodes = search_nodes(manifest_file_path, nodefilter_pattern)
-
-    for node in nodes:
-        output_file_path = os.path.join(
-            output_product_path,
-            node["href"][2:],  # TODO: Check if this needs to be generalized
-        )
-        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-
-        download_file(
-            _href_to_url(odata_url, feature["id"], product_name, node["href"][2:]),
-            output_file_path,
+        # Download manifest file using hardcoded paths to find URL
+        manifest_file_path = os.path.join(temp_product_path, "manifest.safe")
+        manifest_file_path = download_file(
+            _href_to_url(odata_url, feature["id"], product_name, "manifest.safe"),
+            manifest_file_path,
             options,
         )
+        if manifest_file_path is None:
+            log.error(f"Failed to download {os.path.basename(manifest_file_path)}")
+            return None
+
+        # List nodes that match pattern based on manifest file contents
+        nodes = search_nodes(manifest_file_path, nodefilter_pattern)
+
+        for node in nodes:
+            output_file_path = os.path.join(
+                temp_product_path,
+                node["href"][2:],  # TODO: Check if this needs to be generalized
+            )
+            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+
+            output_file_path = download_file(
+                _href_to_url(odata_url, feature["id"], product_name, node["href"][2:]),
+                output_file_path,
+                options,
+            )
+            if output_file_path is None:
+                log.error(f"Failed to download all selected files in {product_name}")
+                return None
+
+        # Move downloaded files to output dir
+        output_product_path = os.path.join(path, product_name)
+        os.makedirs(output_product_path, exist_ok=True)
+        shutil.move(temp_product_path, output_product_path)
+
+    return product_name
 
 
 def download_feature(
