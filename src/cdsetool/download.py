@@ -15,6 +15,7 @@ import time
 from typing import Any, Dict, Generator, List, Union
 from xml.etree import ElementTree as etree
 
+from icecream import ic
 from requests import Session
 from requests.exceptions import ChunkedEncodingError
 from urllib3.exceptions import ProtocolError
@@ -28,6 +29,13 @@ from cdsetool.credentials import (
 from cdsetool.logger import NoopLogger
 from cdsetool.monitor import NoopMonitor, StatusMonitor
 from cdsetool.query import FeatureQuery
+
+
+MANIFEST_BASENAMES = {
+    "SENTINEL-1": "manifest.safe",
+    "SENTINEL-2": "manifest.safe",
+    "SENTINEL-3": "manifest.xml",
+}
 
 
 def _href_to_url(odata_url: str, product_id: str, product_name: str, href: str) -> str:
@@ -51,12 +59,26 @@ def filter_files(
     """
     paths = []
     xmldoc = etree.parse(manifest_file)
-    data_obj_section_elem = xmldoc.find("dataObjectSection")
-    for elem in data_obj_section_elem.iterfind("dataObject"):
-        href = elem.find("byteStream/fileLocation").attrib["href"]
-        match = fnmatch.fnmatch(href.lower(), pattern)
-        if match and not exclude or exclude and not match:
-            paths.append(href)
+
+    if os.path.basename(manifest_file) == "manifest.safe":
+        data_obj_section_elem = xmldoc.find("dataObjectSection")
+        for elem in data_obj_section_elem.iterfind("dataObject"):
+            path = elem.find("byteStream/fileLocation").attrib["href"]
+            path = path[2:]  # Remove "./" prefix present in S2 manifests
+            match = fnmatch.fnmatch(path.lower(), pattern)
+            if match and not exclude or exclude and not match:
+                paths.append(path)
+
+    elif os.path.basename(manifest_file) == "manifest.xml":
+        namespaces = {'ns': 'http://www.eumetsat.int/sip'}
+        data_section_elem = xmldoc.find('ns:dataSection', namespaces)
+        for elem in data_section_elem.iterfind('ns:dataObject', namespaces):
+            path = elem.find("ns:path", namespaces).text
+            path = "/".join(path.split("/")[1:])  # Remove product name prefix in S3 manifests
+            match = fnmatch.fnmatch(path.lower(), pattern)
+            if match and not exclude or exclude and not match:
+                paths.append(path)
+
     return paths
 
 
@@ -131,9 +153,7 @@ def download_nodes(
         os.makedirs(temp_product_path, exist_ok=True)
 
         # Download manifest file
-        manifest_basename = (
-            "manifest.safe"  # TODO: Check if this needs to be generalized
-        )
+        manifest_basename = MANIFEST_BASENAMES[feature["properties"]["collection"]]
         manifest_file = os.path.join(temp_product_path, manifest_basename)
         manifest_file = download_file(
             _href_to_url(odata_url, feature["id"], product_name, manifest_basename),
@@ -154,7 +174,7 @@ def download_nodes(
         for filtered_file in filtered_files:
             output_file = os.path.join(
                 temp_product_path,
-                filtered_file[2:],  # TODO: Check if this needs to be generalized
+                filtered_file,  # TODO: Check if this needs to be generalized
             )
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -163,7 +183,7 @@ def download_nodes(
                     odata_url,
                     feature["id"],
                     product_name,
-                    filtered_file[2:],  # TODO: Check if this needs to be generalized
+                    filtered_file,  # TODO: Check if this needs to be generalized
                 ),
                 output_file,
                 options,
