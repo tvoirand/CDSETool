@@ -42,7 +42,7 @@ def filter_files(
     manifest_file: str, pattern: str, exclude: bool = False
 ) -> List[Dict[str, Any]]:
     """
-    Filter a product's files listed in its manifest file based on a pattern.
+    Filter a product's files, listed in its manifest, based on a given pattern.
 
     Returns a list of files paths within the product bundle.
 
@@ -115,7 +115,7 @@ def download_nodes(
     options: Union[Dict[str, Any], None] = None,
 ) -> Union[str, None]:
     """
-    Download specific files within a feature using node filtering.
+    Download specific files within a feature using OData API's node functionality.
 
     Returns the product name, or None in case of failure.
     """
