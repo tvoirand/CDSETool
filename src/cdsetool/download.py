@@ -113,7 +113,7 @@ def download_nodes(
     path: str,
     filter_pattern: str,
     options: Union[Dict[str, Any], None] = None,
-) -> [str, None]:
+) -> Union[str, None]:
     """
     Download specific files within a feature using node filtering.
 
