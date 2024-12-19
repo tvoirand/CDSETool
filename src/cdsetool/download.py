@@ -69,7 +69,7 @@ def search_nodes(
     return nodes
 
 
-def download_file(url: str, path: str, options: Dict[str, Any]) -> str:
+def download_file(url: str, path: str, options: Dict[str, Any]) -> Union[str, None]:
     """
     Download one specific file.
 
@@ -121,6 +121,9 @@ def download_file(url: str, path: str, options: Dict[str, Any]) -> str:
                 # Close file before copy so all buffers are flushed.
                 shutil.copy(tmp_file, path)
                 return path
+
+    log.error(f"Failed to download {path}")
+    return None
 
 
 def download_node(
