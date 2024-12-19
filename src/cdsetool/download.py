@@ -30,24 +30,6 @@ from cdsetool.monitor import NoopMonitor, StatusMonitor
 from cdsetool.query import FeatureQuery
 
 
-def _xml_to_dataobj_info(element: etree.Element) -> Dict[str, Any]:
-    """
-    Read data object information from an XML element.
-    """
-    assert etree.iselement(element)
-    assert element.tag == "dataObject"
-    data = {}
-    data["id"] = element.attrib["ID"]
-    elem = element.find("byteStream")
-    data["size"] = int(elem.attrib["size"])
-    elem = element.find("byteStream/fileLocation")
-    data["href"] = elem.attrib["href"]
-    elem = element.find("byteStream/checksum")
-    data["checksum_algorithm"] = elem.attrib["checksumName"].lower()
-    data["checksum_value"] = elem.text
-    return data
-
-
 def _href_to_url(odata_url: str, product_id: str, product_name: str, href: str) -> str:
     """
     Convert href, describing file location in manifest file, to an OData download URL.
@@ -69,10 +51,10 @@ def search_nodes(
     xmldoc = etree.parse(manifest_file)
     data_obj_section_elem = xmldoc.find("dataObjectSection")
     for elem in data_obj_section_elem.iterfind("dataObject"):
-        dataobj_info = _xml_to_dataobj_info(elem)
-        match = fnmatch.fnmatch(dataobj_info["href"].lower(), pattern)
+        href = elem.find("byteStream/fileLocation").attrib["href"]
+        match = fnmatch.fnmatch(href.lower(), pattern)
         if match and not exclude or exclude and not match:
-            nodes.append(dataobj_info)
+            nodes.append(href)
     return nodes
 
 
@@ -166,7 +148,7 @@ def download_node(
         for node in nodes:
             output_file = os.path.join(
                 temp_product_path,
-                node["href"][2:],  # TODO: Check if this needs to be generalized
+                node[2:],  # TODO: Check if this needs to be generalized
             )
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -175,7 +157,7 @@ def download_node(
                     odata_url,
                     feature["id"],
                     product_name,
-                    node["href"][2:],  # TODO: Check if this needs to be generalized
+                    node[2:],  # TODO: Check if this needs to be generalized
                 ),
                 output_file,
                 options,
