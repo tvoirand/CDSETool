@@ -1,8 +1,9 @@
 """
 Download features from a Copernicus Data Space Ecosystem OpenSearch API result
 
-Provides a function to download a single feature, and a function to download
-all features in a result set.
+Provides a function to download a single feature, a function to download all features
+in a result set, and a function to download specific files in a given feature using
+node filtering.
 """
 
 import fnmatch
@@ -30,6 +31,9 @@ from cdsetool.query import FeatureQuery
 
 
 def _xml_to_dataobj_info(element: etree.Element) -> Dict[str, Any]:
+    """
+    Read data object information from an XML element.
+    """
     assert etree.iselement(element)
     assert element.tag == "dataObject"
     data = {}
@@ -45,21 +49,24 @@ def _xml_to_dataobj_info(element: etree.Element) -> Dict[str, Any]:
 
 
 def _href_to_url(odata_url: str, product_id: str, product_name: str, href: str) -> str:
+    """
+    Convert href, describing file location in manifest file, to an OData download URL.
+    """
     path = "/".join([f"Nodes({item})" for item in href.split("/")])
     return f"{odata_url}/Products({product_id})/Nodes({product_name})/{path}/$value"
 
 
 def search_nodes(
-    manifest_file_path: str, pattern: str, exclude: bool = False
+    manifest_file: str, pattern: str, exclude: bool = False
 ) -> List[Dict[str, Any]]:
     """
-    Search for product tree nodes matching a given pattern within a manifest file.
+    Search in a manifest file for nodes in the product tree matching a given patternd.
 
     If "exclude" is set to False, only nodes that match pattern are returned. If it's
     set to True, only nodes that do not match pattern are returned.
     """
     nodes = []
-    xmldoc = etree.parse(manifest_file_path)
+    xmldoc = etree.parse(manifest_file)
     data_obj_section_elem = xmldoc.find("dataObjectSection")
     for elem in data_obj_section_elem.iterfind("dataObject"):
         dataobj_info = _xml_to_dataobj_info(elem)
@@ -71,9 +78,9 @@ def search_nodes(
 
 def download_file(url: str, path: str, options: Dict[str, Any]) -> Union[str, None]:
     """
-    Download one specific file.
+    Download a single file.
 
-    Returns local path of downloaded file.
+    Returns local path of downloaded file, or None in case of failure.
     """
     log = _get_logger(options)
     basename = os.path.basename(path)
@@ -125,12 +132,13 @@ def download_node(
 ) -> str:
     """
     Download specific files within a feature using node filtering.
+
+    Returns the product name, or None in case of failure.
     """
     options = options or {}
     log = _get_logger(options)
     temp_dir_usr = _get_temp_dir(options)
 
-    # Get product URL and name
     odata_url = "https://download.dataspace.copernicus.eu/odata/v1"
     product_name = feature["properties"]["title"]
 
@@ -138,33 +146,41 @@ def download_node(
         temp_product_path = os.path.join(temp_dir, product_name)
         os.makedirs(temp_product_path, exist_ok=True)
 
-        # Download manifest file using hardcoded paths to find URL
-        manifest_file_path = os.path.join(temp_product_path, "manifest.safe")
-        manifest_file_path = download_file(
-            _href_to_url(odata_url, feature["id"], product_name, "manifest.safe"),
-            manifest_file_path,
+        # Download manifest file
+        manifest_basename = (
+            "manifest.safe"  # TODO: Check if this needs to be generalized
+        )
+        manifest_file = os.path.join(temp_product_path, manifest_basename)
+        manifest_file = download_file(
+            _href_to_url(odata_url, feature["id"], product_name, manifest_basename),
+            manifest_file,
             options,
         )
-        if manifest_file_path is None:
-            log.error(f"Failed to download {os.path.basename(manifest_file_path)}")
+        if manifest_file is None:
+            log.error(f"Failed to download {manifest_basename} in {product_name}")
             return None
 
         # List nodes that match pattern based on manifest file contents
-        nodes = search_nodes(manifest_file_path, nodefilter_pattern)
+        nodes = search_nodes(manifest_file, nodefilter_pattern)
 
         for node in nodes:
-            output_file_path = os.path.join(
+            output_file = os.path.join(
                 temp_product_path,
                 node["href"][2:],  # TODO: Check if this needs to be generalized
             )
-            os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-            output_file_path = download_file(
-                _href_to_url(odata_url, feature["id"], product_name, node["href"][2:]),
-                output_file_path,
+            output_file = download_file(
+                _href_to_url(
+                    odata_url,
+                    feature["id"],
+                    product_name,
+                    node["href"][2:],  # TODO: Check if this needs to be generalized
+                ),
+                output_file,
                 options,
             )
-            if output_file_path is None:
+            if output_file is None:
                 log.error(f"Failed to download all selected files in {product_name}")
                 return None
 
