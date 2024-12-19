@@ -145,7 +145,11 @@ def download_nodes(
             return None
 
         # List files that match pattern based on manifest file contents
-        filtered_files = filter_files(manifest_file, filter_pattern)
+        try:
+            filtered_files = filter_files(manifest_file, filter_pattern)
+        except Exception as e:
+            log.error(f"Failed to filter files in {product_name}: {e}")
+            return None
 
         for filtered_file in filtered_files:
             output_file = os.path.join(
