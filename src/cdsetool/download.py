@@ -135,6 +135,8 @@ def download_nodes(
             "manifest.safe"  # TODO: Check if this needs to be generalized
         )
         manifest_file = os.path.join(temp_product_path, manifest_basename)
+        from icecream import ic
+        ic(feature["id"], product_name)
         manifest_file = download_file(
             _href_to_url(odata_url, feature["id"], product_name, manifest_basename),
             manifest_file,
@@ -173,9 +175,8 @@ def download_nodes(
                 return None
 
         # Move downloaded files to output dir
-        output_product_path = os.path.join(path, product_name)
-        os.makedirs(output_product_path, exist_ok=True)
-        shutil.move(temp_product_path, output_product_path)
+        os.makedirs(path, exist_ok=True)
+        shutil.move(temp_product_path, path)
 
     return product_name
 
