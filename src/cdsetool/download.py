@@ -64,7 +64,7 @@ def filter_files(
         data_obj_section_elem = xmldoc.find("dataObjectSection")
         for elem in data_obj_section_elem.iterfind("dataObject"):
             path = elem.find("byteStream/fileLocation").attrib["href"]
-            path = path[2:]  # Remove "./" prefix present in S2 manifests
+            path = path[2:]  # Remove "./" prefix present in S2 and S3 manifests
             match = fnmatch.fnmatch(path.lower(), pattern)
             if match and not exclude or exclude and not match:
                 paths.append(path)
