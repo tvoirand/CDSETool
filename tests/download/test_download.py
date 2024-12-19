@@ -1,4 +1,4 @@
-"""Test finding specific files matching a given pattern from reading a manifest file."""
+"""Tests for CDSETool's download module."""
 
 import os
 import tempfile
@@ -28,11 +28,13 @@ def test_filter_files_s1():
         (
             "annotation/calibration/"
             "calibration-s1a-iw-grd-vh-20241217t061735-20241217t061800-057028-07020f-002.xml"
-        ),(
+        ),
+        (
             "annotation/calibration/"
             "calibration-s1a-iw-grd-vv-20241217t061735-20241217t061800-057028-07020f-001.xml"
-        )
+        ),
     ]
+
 
 def test_filter_files_s2():
     manifest_file_path = "tests/download/mock/sentinel_2/manifest.safe"
@@ -44,14 +46,11 @@ def test_filter_files_s2():
         )
     ]
 
+
 def test_filter_files_s3():
     manifest_file_path = "tests/download/mock/sentinel_3/manifest.xml"
     filtered_files = filter_files(manifest_file_path, "*oa02_reflectance.nc")
-    assert filtered_files == [
-        (
-            "Oa02_reflectance.nc"
-        )
-    ]
+    assert filtered_files == [("Oa02_reflectance.nc")]
 
 
 def test_filter_files_with_exclude():

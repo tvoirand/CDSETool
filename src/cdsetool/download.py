@@ -15,7 +15,6 @@ import time
 from typing import Any, Dict, Generator, List, Union
 from xml.etree import ElementTree as etree
 
-from icecream import ic
 from requests import Session
 from requests.exceptions import ChunkedEncodingError
 from urllib3.exceptions import ProtocolError
@@ -29,7 +28,6 @@ from cdsetool.credentials import (
 from cdsetool.logger import NoopLogger
 from cdsetool.monitor import NoopMonitor, StatusMonitor
 from cdsetool.query import FeatureQuery
-
 
 MANIFEST_BASENAMES = {
     "SENTINEL-1": "manifest.safe",
@@ -70,11 +68,13 @@ def filter_files(
                 paths.append(path)
 
     elif os.path.basename(manifest_file) == "manifest.xml":
-        namespaces = {'ns': 'http://www.eumetsat.int/sip'}
-        data_section_elem = xmldoc.find('ns:dataSection', namespaces)
-        for elem in data_section_elem.iterfind('ns:dataObject', namespaces):
+        namespaces = {"ns": "http://www.eumetsat.int/sip"}
+        data_section_elem = xmldoc.find("ns:dataSection", namespaces)
+        for elem in data_section_elem.iterfind("ns:dataObject", namespaces):
             path = elem.find("ns:path", namespaces).text
-            path = "/".join(path.split("/")[1:])  # Remove product name prefix in S3 manifests
+            path = "/".join(
+                path.split("/")[1:]
+            )  # Remove product name prefix in S3 manifests
             match = fnmatch.fnmatch(path.lower(), pattern)
             if match and not exclude or exclude and not match:
                 paths.append(path)
