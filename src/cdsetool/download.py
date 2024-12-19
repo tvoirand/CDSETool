@@ -38,24 +38,26 @@ def _href_to_url(odata_url: str, product_id: str, product_name: str, href: str) 
     return f"{odata_url}/Products({product_id})/Nodes({product_name})/{path}/$value"
 
 
-def search_nodes(
+def filter_files(
     manifest_file: str, pattern: str, exclude: bool = False
 ) -> List[Dict[str, Any]]:
     """
-    Search in a manifest file for nodes in the product tree matching a given patternd.
+    Filter a product's files listed in its manifest file based on a pattern.
 
-    If "exclude" is set to False, only nodes that match pattern are returned. If it's
-    set to True, only nodes that do not match pattern are returned.
+    Returns a list of files paths within the product bundle.
+
+    If "exclude" is set to False, only files that match pattern are returned. If it's
+    set to True, only files that do not match pattern are returned.
     """
-    nodes = []
+    paths = []
     xmldoc = etree.parse(manifest_file)
     data_obj_section_elem = xmldoc.find("dataObjectSection")
     for elem in data_obj_section_elem.iterfind("dataObject"):
         href = elem.find("byteStream/fileLocation").attrib["href"]
         match = fnmatch.fnmatch(href.lower(), pattern)
         if match and not exclude or exclude and not match:
-            nodes.append(href)
-    return nodes
+            paths.append(href)
+    return paths
 
 
 def download_file(url: str, path: str, options: Dict[str, Any]) -> Union[str, None]:
@@ -106,12 +108,12 @@ def download_file(url: str, path: str, options: Dict[str, Any]) -> Union[str, No
     return None
 
 
-def download_node(
+def download_nodes(
     feature,
     path: str,
-    nodefilter_pattern: str,
+    filter_pattern: str,
     options: Union[Dict[str, Any], None] = None,
-) -> str:
+) -> [str, None]:
     """
     Download specific files within a feature using node filtering.
 
@@ -142,13 +144,13 @@ def download_node(
             log.error(f"Failed to download {manifest_basename} in {product_name}")
             return None
 
-        # List nodes that match pattern based on manifest file contents
-        nodes = search_nodes(manifest_file, nodefilter_pattern)
+        # List files that match pattern based on manifest file contents
+        filtered_files = filter_files(manifest_file, filter_pattern)
 
-        for node in nodes:
+        for filtered_file in filtered_files:
             output_file = os.path.join(
                 temp_product_path,
-                node[2:],  # TODO: Check if this needs to be generalized
+                filtered_file[2:],  # TODO: Check if this needs to be generalized
             )
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
@@ -157,7 +159,7 @@ def download_node(
                     odata_url,
                     feature["id"],
                     product_name,
-                    node[2:],  # TODO: Check if this needs to be generalized
+                    filtered_file[2:],  # TODO: Check if this needs to be generalized
                 ),
                 output_file,
                 options,
